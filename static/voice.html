@@ -177,6 +177,82 @@
       text-align: center;
     }
 
+    /* ── Voice selector ────────────────────────────────── */
+    .voice-selector {
+      width: 100%;
+      max-width: 640px;
+      margin-bottom: 1rem;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .voice-selector label {
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    #voiceSelect {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+      color: var(--text);
+      font-size: 0.9rem;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    #voiceSelect:hover {
+      border-color: var(--primary);
+    }
+
+    #voiceSelect:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.15);
+    }
+
+    /* ── Voice selector ──────────────────────────────────────────────── */
+    .voice-selector {
+      width: 100%;
+      max-width: 640px;
+      margin-bottom: 1rem;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .voice-selector label {
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    #voiceSelect {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+      color: var(--text);
+      font-size: 0.9rem;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    #voiceSelect:hover {
+      border-color: var(--primary);
+    }
+
+    #voiceSelect:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.15);
+    }
+
     /* ── Visualiser ───────────────────────────────────── */
     #visualiser {
       width: 200px;
@@ -192,12 +268,31 @@
 <h1>&#127908; Voice Chat</h1>
 <p class="subtitle">Press Start Bot and it will listen continuously for your answers</p>
 
+<div class="voice-selector">
+  <label for="voiceSelect">🎙️ Voice Accent:</label>
+  <select id="voiceSelect">
+    <option value="en-US-AriaNeural">🇺🇸 US Female (Aria) - Professional</option>
+    <option value="en-US-GuyNeural">🇺🇸 US Male (Guy) - Clear</option>
+    <option value="en-US-JennyNeural">🇺🇸 US Female (Jenny) - Friendly</option>
+    <option value="en-US-ChristopherNeural">🇺🇸 US Male (Christopher) - Authoritative</option>
+    <option value="en-GB-SoniaNeural">🇬🇧 UK Female (Sonia)</option>
+    <option value="en-GB-RyanNeural">🇬🇧 UK Male (Ryan)</option>
+    <option value="en-AU-NatashaNeural">🇦🇺 Australian Female (Natasha)</option>
+    <option value="en-AU-WilliamNeural">🇦🇺 Australian Male (William)</option>
+    <option value="en-IN-NeerjaNeural">🇮🇳 Indian Female (Neerja)</option>
+    <option value="en-IN-PrabhatNeural">🇮🇳 Indian Male (Prabhat)</option>
+    <option value="en-CA-ClaraNeural">🇨🇦 Canadian Female (Clara)</option>
+    <option value="en-CA-LiamNeural">🇨🇦 Canadian Male (Liam)</option>
+  </select>
+</div>
+
 <div id="chat"></div>
 
 <canvas id="visualiser"></canvas>
 
 <div class="controls">
   <button id="startBtn">Start Bot</button>
+  <button id="stopBtn" style="display:none; background: var(--danger);">Stop Bot</button>
   <button id="micBtn" title="Auto listening enabled after Start">&#127908;</button>
 </div>
 <p id="status">Ready</p>
@@ -235,12 +330,16 @@ const IDLE_RESET_MS = 8000;      // reset a silent clip after this many ms
 const chatEl     = document.getElementById("chat");
 const micBtn     = document.getElementById("micBtn");
 const startBtn   = document.getElementById("startBtn");
+const stopBtn    = document.getElementById("stopBtn");
 const statusEl   = document.getElementById("status");
 const playerEl   = document.getElementById("audioPlayer");
 const canvas     = document.getElementById("visualiser");
 const canvasCtx  = canvas.getContext("2d");
 const textForm   = document.getElementById("textForm");
 const textInput  = document.getElementById("textInput");
+const voiceSelect = document.getElementById("voiceSelect");
+let chatModeActive = false;
+let selectedVoice = voiceSelect.value;
 
 const updateMicButton = () => {
   if (autoMode) {
@@ -314,12 +413,26 @@ function teardownMedia() {
   sourceNode = null;
 }
 
+// ── Voice selector change handler ──────────────────────────────────────────
+voiceSelect.addEventListener('change', (e) => {
+  selectedVoice = e.target.value;
+  console.log('Voice changed to:', selectedVoice);
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ action: 'set_voice', voice: selectedVoice }));
+    addMessage('system', `🎙️ Voice changed to: ${e.target.selectedOptions[0].text}`);
+  }
+});
+
 // ── WebSocket ──────────────────────────────────────────────────────────────
 function connectWS() {
   ws = new WebSocket(WS_URL);
   ws.binaryType = "arraybuffer";
 
-  ws.onopen  = () => setStatus("Connected");
+  ws.onopen  = () => {
+    setStatus("Connected");
+    // Send initial voice preference
+    ws.send(JSON.stringify({ action: 'set_voice', voice: selectedVoice }));
+  };
   ws.onclose = () => {
     setStatus("Disconnected — reconnecting…");
     autoMode = false;
@@ -336,6 +449,18 @@ function connectWS() {
     setTimeout(connectWS, 2000);
   };
   ws.onerror = () => ws.close();
+
+  stopBtn.onclick = () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ action: "stop" }));
+      addMessage("system", "Stopping bot...");
+    }
+    autoMode = false;
+    if (recording) stopRecording(true);
+    startBtn.disabled = true;
+    stopBtn.disabled = true;
+    setStatus("Session ended. Refresh to start over.");
+  };
 
   ws.onmessage = (evt) => {
     if (evt.data instanceof ArrayBuffer) {
@@ -360,11 +485,23 @@ function connectWS() {
       if (msg.text) addMessage("user", msg.text);
     } else if (msg.type === "llm_text") {
       addMessage("assistant", msg.text);
+    } else if (msg.type === "chat_mode_enabled") {
+      chatModeActive = true;
+      setStatus("🎉 Qualification complete! You can now ask me anything.");
+      startBtn.style.display = "none";
+      stopBtn.style.display = "inline-block";
     } else if (msg.type === "done") {
-      setStatus("Ready");
+      setStatus("Session ended. Refresh to start over.");
+      autoMode = false;
+      if (recording) stopRecording(true);
+      startBtn.disabled = true;
+      stopBtn.disabled = true;
+      micBtn.disabled = true;
     } else if (msg.type === "error") {
       addMessage("system", `⚠ ${msg.text}`);
       setStatus("Ready");
+    } else if (msg.type === "classification") {
+      addMessage("system", `📊 Classification: ${msg.text}`);
     }
   };
 }
@@ -551,6 +688,13 @@ startBtn.addEventListener("click", async () => {
   }
 
   setStatus("Starting conversation...");
+  
+  // Send initial voice selection
+  const currentVoice = voiceSelect.value;
+  ws.send(JSON.stringify({ action: "set_voice", voice: currentVoice }));
+  addMessage('system', `🎙️ Voice set to: ${voiceSelect.selectedOptions[0].text}`);
+  
+  // Start the conversation
   ws.send(JSON.stringify({ action: "start" }));
   autoMode = true;
   updateMicButton();
