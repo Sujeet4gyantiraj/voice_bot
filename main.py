@@ -322,110 +322,6 @@ def interpret_yes_no(text: str) -> Optional[bool]:
     return None
 
 
-# ── Latency Reporting Functions ─────────────────────────────────────────────
-
-def print_latency_breakdown(latencies: dict):
-    """Print detailed latency breakdown for a single question-response cycle"""
-    print("\n" + "="*80)
-    print(f"⏱️  LATENCY BREAKDOWN - Question {latencies.get('question_num', 'N/A')}")
-    print("="*80)
-    
-    # Question and Answer
-    if "question" in latencies:
-        print(f"❓ Question: {latencies['question']}")
-    if "answer" in latencies:
-        print(f"💬 Answer: {latencies['answer']}")
-    
-    print("\n📊 Timing Breakdown:")
-    print("-"*80)
-    
-    # Individual components
-    if "tts" in latencies:
-        print(f"  🔊 Text-to-Speech (TTS):    {latencies['tts']:6.2f}s  (Bot speaking question)")
-    if "stt" in latencies:
-        print(f"  🎤 Speech-to-Text (STT):    {latencies['stt']:6.2f}s  (Transcribing user answer)")
-    if "total_response" in latencies:
-        print(f"  ⏰ Total Response Time:     {latencies['total_response']:6.2f}s  (Question asked → Answer received)")
-    
-    # Calculate waiting time (user thinking + speaking)
-    if "total_response" in latencies and "tts" in latencies:
-        thinking_time = latencies['total_response'] - latencies.get('stt', 0)
-        print(f"  🤔 User Think + Speak Time: {thinking_time:6.2f}s  (After bot finished speaking)")
-    
-    print("="*80 + "\n")
-
-
-def print_latency_summary(latency_log: list, total_time: float):
-    """Print summary of all question-response latencies"""
-    if not latency_log:
-        return
-    
-    print("\n")
-    print("╔" + "="*78 + "╗")
-    print("║" + " "*20 + "📊 FINAL LATENCY SUMMARY" + " "*33 + "║")
-    print("╚" + "="*78 + "╝")
-    
-    print("\n┌─────┬─────────────────────────────────┬────────┬────────┬────────┬──────────┐")
-    print("│ Q # │ Question                        │  TTS   │  STT   │ Think  │ Response │")
-    print("├─────┼─────────────────────────────────┼────────┼────────┼────────┼──────────┤")
-    
-    total_tts = 0
-    total_stt = 0
-    total_response = 0
-    
-    for log in latency_log:
-        q_num = log.get('question_num', 'N/A')
-        question = log.get('question', '')[:30] + "..." if len(log.get('question', '')) > 30 else log.get('question', '')
-        tts = log.get('tts', 0)
-        stt = log.get('stt', 0)
-        response = log.get('total_response', 0)
-        thinking = response - stt if response and stt else response
-        
-        total_tts += tts
-        total_stt += stt
-        total_response += response
-        
-        print(f"│  {q_num}  │ {question:<31} │ {tts:5.2f}s │ {stt:5.2f}s │ {thinking:5.2f}s │ {response:7.2f}s │")
-    
-    print("├─────┼─────────────────────────────────┼────────┼────────┼────────┼──────────┤")
-    print(f"│ AVG │ Average per question            │ {total_tts/len(latency_log):5.2f}s │ {total_stt/len(latency_log):5.2f}s │ {(total_response-total_stt)/len(latency_log):5.2f}s │ {total_response/len(latency_log):7.2f}s │")
-    print("└─────┴─────────────────────────────────┴────────┴────────┴────────┴──────────┘")
-    
-    print(f"\n🏁 Total Session Duration: {total_time:.2f}s")
-    print(f"📝 Questions Asked: {len(latency_log)}")
-    print(f"⚡ Average Response Time: {total_response/len(latency_log):.2f}s per question")
-    print(f"🔊 Total TTS Time: {total_tts:.2f}s")
-    print(f"🎤 Total STT Time: {total_stt:.2f}s")
-    
-    # Calculate efficiency
-    processing_time = total_tts + total_stt
-    user_time = total_response - total_stt
-    print(f"\n💡 Performance Metrics:")
-    print(f"   • Bot Processing: {processing_time:.2f}s ({processing_time/total_time*100:.1f}% of total)")
-    print(f"   • User Interaction: {user_time:.2f}s ({user_time/total_time*100:.1f}% of total)")
-    print("\n" + "="*80 + "\n")
-
-
-def print_chat_latency(latencies: dict):
-    """Print latency for chat mode interactions"""
-    print("\n" + "="*70)
-    print("💬 CHAT MODE LATENCY")
-    print("="*70)
-    
-    if "user_message" in latencies:
-        msg = latencies['user_message'][:50] + "..." if len(latencies.get('user_message', '')) > 50 else latencies.get('user_message', '')
-        print(f"User: {msg}")
-    
-    print("\n📊 Processing Times:")
-    print("-"*70)
-    
-    if "llm" in latencies:
-        print(f"  🤖 LLM Processing:  {latencies['llm']:6.2f}s  (Generating response)")
-    if "total" in latencies:
-        print(f"  ⏰ Total Time:      {latencies['total']:6.2f}s  (Including TTS)")
-    
-    print("="*70 + "\n")
-
 
 # ── STT with Faster Whisper (FIXED) ─────────────────────────────────────────
 
@@ -488,11 +384,11 @@ def transcribe_audio(audio_data: bytes) -> str:
     """
     stt_start = time.time()
     if len(audio_data) < 100:
-        logger.warning(f"⚠️  [STT] Audio data too small: {len(audio_data)} bytes")
+        logger.warning(f"STT Audio data too small: {len(audio_data)} bytes")
         return ""
     
-    logger.info(f"🎤 [STT] Received {len(audio_data)} bytes of audio data")
-    logger.info(f"🎤 [STT] First 20 bytes (hex): {audio_data[:20].hex()}")
+    logger.info(f"STT Received {len(audio_data)} bytes of audio data")
+    logger.info(f"STT First 20 bytes (hex): {audio_data[:20].hex()}")
     
     try:
         # Determine format and convert if needed
@@ -547,10 +443,7 @@ def transcribe_audio(audio_data: bytes) -> str:
                 logger.info(f"Segment: {seg.text}")
             
             text = " ".join(text_parts).strip()
-            
             stt_duration = time.time() - stt_start
-            logger.info(f"✅ [STT] Transcription completed in {stt_duration:.2f}s")
-            logger.info(f"📝 [STT] Final transcription: '{text}'")
             return text
             
         finally:
@@ -639,7 +532,7 @@ async def voice_stream(ws: WebSocket):
             session["question_start_time"] = time.time()
             session["current_latencies"] = {"question_num": session["step"] + 1}  # Reset latency tracking
             prompt = question if not reminder else f"I'll repeat the question: {question}"
-            logger.info(f"❓ [QUESTION {session['step'] + 1}/{len(SCRIPT_QUESTIONS)}] Asking: '{question}'")
+            logger.info(f"[QUESTION {session['step'] + 1}/{len(SCRIPT_QUESTIONS)}] Asking: '{question}'")
             if reminder:
                 logger.info(f"🔄 [REMINDER] Repeating question after timeout")
             await stream_voice_message(prompt)
@@ -650,7 +543,7 @@ async def voice_stream(ws: WebSocket):
             return
         session["started"] = True
         session["flow_start_time"] = time.time()
-        logger.info(f"🚀 [FLOW START] Beginning lead qualification process")
+        logger.info(f"[FLOW START] Beginning lead qualification process")
         await stream_voice_message(
             "Hi, thanks for calling Northern Renovations. I just need to ask three quick yes or no questions."
         )
@@ -683,33 +576,28 @@ async def voice_stream(ws: WebSocket):
             await stream_voice_message(msg)
             await ws.send_json({"type": "classification", "text": "Not Qualified"})
         
-        logger.info(f"🏁 [FLOW END] Total session duration: {total_flow_time:.2f}s")
-        logger.info(f"✅ [SESSION END] Qualification complete, ending session automatically")
+        logger.info(f"[FLOW END] Total session duration: {total_flow_time:.2f}s")
+        logger.info(f"[SESSION END] Qualification complete, ending session automatically")
         
         # Print final latency summary
-        print_latency_summary(session["latency_log"], total_flow_time)
+        # print_latency_summary(session["latency_log"], total_flow_time)
         
         # End session automatically
         await ws.send_json({"type": "done"})
         await ws.send_json({"type": "status", "text": "Session ended. Refresh to start over."})
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    # NOTE: LLM Chat Mode is DISABLED
-    # Session ends automatically after qualification questions are complete.
-    # The function below is kept for reference but is not called anymore.
-    # ═══════════════════════════════════════════════════════════════════════════
-    
+   
     async def handle_llm_chat(user_message: str):
         """Handle general conversation with LLM after qualification (DISABLED)"""
         chat_start = time.time()
         
-        logger.info(f"💬 [CHAT] User: '{user_message}'")
+        logger.info(f"[CHAT] User: '{user_message}'")
         
         # Check for goodbye/exit phrases
         goodbye_phrases = {"bye", "goodbye", "thank you", "thanks", "that's all", "no more questions"}
         if any(phrase in user_message.lower() for phrase in goodbye_phrases) and len(user_message.split()) <= 3:
             farewell_msg = "You're welcome! Have a great day. Goodbye!"
-            logger.info(f"👋 [CHAT] Ending conversation")
+            logger.info(f"[CHAT] Ending conversation")
             await stream_voice_message(farewell_msg)
             await ws.send_json({"type": "done"})
             return
@@ -747,7 +635,7 @@ async def voice_stream(ws: WebSocket):
             llm_response = result.get("response", "I'm sorry, I didn't catch that.")
             llm_duration = time.time() - llm_start
             
-            logger.info(f"🤖 [CHAT] LLM response in {llm_duration:.2f}s: '{llm_response[:100]}...'")
+            logger.info(f"[CHAT] LLM response in {llm_duration:.2f}s: '{llm_response[:100]}...'")
             await stream_voice_message(llm_response)
             
             # Print chat latency
@@ -757,10 +645,10 @@ async def voice_stream(ws: WebSocket):
                 "llm": llm_duration,
                 "total": total_chat_time
             }
-            print_chat_latency(chat_latencies)
+        
             
         except Exception as e:
-            logger.error(f"❌ [CHAT] LLM error: {e}")
+            logger.error(f"[CHAT] LLM error: {e}")
             await stream_voice_message("I'm having trouble processing that. Could you try again?")
     
     async def handle_answer(answer_text: str):
@@ -785,11 +673,10 @@ async def voice_stream(ws: WebSocket):
         session["current_latencies"]["question"] = session["current_question"]
         session["current_latencies"]["answer"] = answer_text
 
-        logger.info(f"💬 [ANSWER] User said: '{answer_text}'")
-        logger.info(f"⏱️  [TIMING] Response time: {response_time:.2f}s from question asked")
+        logger.info(f"[ANSWER] User said: '{answer_text}'")
+        logger.info(f"[TIMING] Response time: {response_time:.2f}s from question asked")
         
-        # Print detailed latency breakdown
-        print_latency_breakdown(session["current_latencies"])
+       
 
         verdict = interpret_yes_no(answer_text)
         if verdict is None:
@@ -799,22 +686,22 @@ async def voice_stream(ws: WebSocket):
             schedule_question_timeout()
             return
 
-        logger.info(f"{'✅' if verdict else '❌'} [ANSWER] Interpreted as: {'YES' if verdict else 'NO'}")
+        
         
         # Save latency log before moving to next question
         session["latency_log"].append(session["current_latencies"].copy())
 
         if not verdict:
-            logger.info(f"🚫 [QUALIFICATION] User disqualified at question {session['step'] + 1}")
+            logger.info(f"[QUALIFICATION] User disqualified at question {session['step'] + 1}")
             await wrap_up(False)
             return
 
         session["step"] += 1
         if session["step"] >= len(SCRIPT_QUESTIONS):
-            logger.info(f"🎉 [QUALIFICATION] All questions answered YES - Hot Lead!")
+            logger.info(f"[QUALIFICATION] All questions answered YES - Hot Lead!")
             await wrap_up(True)
         else:
-            logger.info(f"➡️  [FLOW] Moving to next question ({session['step'] + 1}/{len(SCRIPT_QUESTIONS)})")
+           
             await stream_voice_message("Great, thank you.")
             await ask_current_question()
             schedule_question_timeout()
@@ -862,18 +749,18 @@ async def voice_stream(ws: WebSocket):
                 elif action == "set_voice":
                     new_voice = ctrl.get("voice", DEFAULT_PIPER_VOICE)
                     session["voice"] = new_voice
-                    logger.info(f"🎙️ [VOICE] Voice changed to: {new_voice}")
+                    logger.info(f"[VOICE] Voice changed to: {new_voice}")
                     await ws.send_json({"type": "status", "text": f"Voice set to {new_voice}"})
 
                 elif action == "end" and audio_buffer:
                     processing_start = time.time()
-                    logger.info(f"🎙️  [AUDIO] Processing {len(audio_buffer)} bytes of recorded audio")
+                    logger.info(f"[AUDIO] Processing {len(audio_buffer)} bytes of recorded audio")
                     await ws.send_json({"type": "status", "text": "Transcribing..."})
                     audio_bytes = bytes(audio_buffer)
                     transcript = await asyncio.to_thread(transcribe_audio, audio_bytes)
                     audio_buffer.clear()
                     processing_duration = time.time() - processing_start
-                    logger.info(f"⏱️  [PROCESSING] Audio-to-text took {processing_duration:.2f}s")
+                    logger.info(f" [PROCESSING] Audio-to-text took {processing_duration:.2f}s")
                     await ws.send_json({"type": "transcript", "text": transcript})
                     
                     # Track STT latency
@@ -882,7 +769,7 @@ async def voice_stream(ws: WebSocket):
                     if transcript:
                         await handle_answer(transcript)
                     else:
-                        logger.warning(f"⚠️  [STT] Empty transcript received")
+                        logger.warning(f"STT Empty transcript received")
                         if not session.get("completed"):
                             await stream_voice_message("I didn't catch that. Let's try again.")
                             await ask_current_question()
@@ -895,7 +782,7 @@ async def voice_stream(ws: WebSocket):
                     await handle_answer(text_answer)
 
                 elif action == "stop":
-                    logger.info("🛑 [STOP] User requested to stop the bot")
+                    logger.info("STOP User requested to stop the bot")
                     await ws.send_json({"type": "done"})
                     break
 
@@ -940,33 +827,6 @@ async def voice_ui():
         )
 
 
-# ── Health Check ────────────────────────────────────────────────────────────
-
-@app.get("/")
-async def root():
-    """API health check"""
-    return {
-        "status": "running",
-        "service": "Llama 3.3 Voice API",
-        "stt": "Faster Whisper",
-        "tts": "Microsoft Edge TTS (edge-tts)",
-        "llm": "Qwen3-Coder (via Ollama)"
-    }
-
-
-@app.get("/health")
-async def health_check():
-    """Detailed health check"""
-    return {
-        "status": "healthy",
-        "whisper_loaded": whisper_model is not None,
-        "endpoints": {
-            "text_chat": "/ask",
-            "voice_stream": "/ws/voice",
-            "chat_ui": "/chat",
-            "voice_ui": "/voice"
-        }
-    }
 
 
 if __name__ == "__main__":
