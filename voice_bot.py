@@ -11,7 +11,7 @@ This module implements a simple voice bot that can:
 import speech_recognition as sr
 import pyttsx3
 import sys
-from bot_utils import process_command
+from bot_utils import process_command, TTS_RATE, TTS_VOLUME, LISTEN_TIMEOUT, PHRASE_TIME_LIMIT
 
 
 class VoiceBot:
@@ -25,9 +25,9 @@ class VoiceBot:
         # Initialize text-to-speech engine
         self.tts_engine = pyttsx3.init()
         
-        # Configure TTS properties
-        self.tts_engine.setProperty('rate', 150)  # Speed of speech
-        self.tts_engine.setProperty('volume', 0.9)  # Volume (0.0 to 1.0)
+        # Configure TTS properties using constants
+        self.tts_engine.setProperty('rate', TTS_RATE)
+        self.tts_engine.setProperty('volume', TTS_VOLUME)
         
         print("Voice Bot initialized successfully!")
     
@@ -56,8 +56,8 @@ class VoiceBot:
             self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
             
             try:
-                # Listen to the audio
-                audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=10)
+                # Listen to the audio using configurable timeouts
+                audio = self.recognizer.listen(source, timeout=LISTEN_TIMEOUT, phrase_time_limit=PHRASE_TIME_LIMIT)
                 
                 print("Processing speech...")
                 

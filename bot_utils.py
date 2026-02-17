@@ -5,6 +5,12 @@ This module contains common functionality used by both the main voice bot
 and the demo script.
 """
 
+# Configuration constants
+TTS_RATE = 150  # Speech rate (words per minute)
+TTS_VOLUME = 0.9  # Volume level (0.0 to 1.0)
+LISTEN_TIMEOUT = 5  # Timeout in seconds when listening for speech
+PHRASE_TIME_LIMIT = 10  # Maximum time in seconds for a phrase
+
 
 def process_command(text):
     """

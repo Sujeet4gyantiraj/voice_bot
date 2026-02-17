@@ -7,7 +7,7 @@ actual microphone input, useful for testing and demonstration purposes.
 """
 
 import pyttsx3
-from bot_utils import process_command
+from bot_utils import process_command, TTS_RATE, TTS_VOLUME
 
 
 class VoiceBotDemo:
@@ -19,9 +19,9 @@ class VoiceBotDemo:
         self.tts_available = True
         try:
             self.tts_engine = pyttsx3.init()
-            # Configure TTS properties
-            self.tts_engine.setProperty('rate', 150)
-            self.tts_engine.setProperty('volume', 0.9)
+            # Configure TTS properties using constants
+            self.tts_engine.setProperty('rate', TTS_RATE)
+            self.tts_engine.setProperty('volume', TTS_VOLUME)
             print("Voice Bot Demo initialized with TTS!")
         except Exception as e:
             self.tts_available = False
