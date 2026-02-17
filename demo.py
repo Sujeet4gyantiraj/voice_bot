@@ -7,6 +7,7 @@ actual microphone input, useful for testing and demonstration purposes.
 """
 
 import pyttsx3
+from bot_utils import process_command
 
 
 class VoiceBotDemo:
@@ -43,46 +44,6 @@ class VoiceBotDemo:
             except Exception as e:
                 print(f"[TTS Error: {e}]")
     
-    def process_command(self, text):
-        """
-        Process the user's command and generate a response.
-        
-        Args:
-            text (str): The user's command in text form
-            
-        Returns:
-            str: The bot's response
-            bool: Whether to continue the conversation
-        """
-        if not text:
-            return "I didn't catch that. Could you please repeat?", True
-        
-        text_lower = text.lower()
-        words = text_lower.split()
-        
-        # Check for exit commands
-        if any(word in words for word in ['exit', 'quit', 'bye', 'goodbye', 'stop']):
-            return "Goodbye! Have a great day!", False
-        
-        # Check for greeting
-        if any(word in words for word in ['hello', 'hi', 'hey']):
-            return "Hello! How can I help you today?", True
-        
-        # Check for name query
-        if 'your name' in text_lower or 'who are you' in text_lower:
-            return "I am a voice bot with speech to text and text to speech capabilities.", True
-        
-        # Check for help
-        if 'help' in words:
-            return "I can listen to your voice and respond back. Try saying hello, asking my name, or say goodbye to exit.", True
-        
-        # Check for how are you
-        if 'how are you' in text_lower:
-            return "I'm doing great! Thank you for asking. How can I assist you?", True
-        
-        # Default response
-        return f"You said: {text}. I'm a simple bot, so I'm just echoing your words back to you.", True
-    
     def run_demo(self):
         """Run the demo with predefined inputs."""
         print("=" * 60)
@@ -107,8 +68,8 @@ class VoiceBotDemo:
             print(f"\n[Simulated User Input]: {user_input}")
             print("-" * 60)
             
-            # Process the command
-            response, continue_conversation = self.process_command(user_input)
+            # Process the command using the shared utility
+            response, continue_conversation = process_command(user_input)
             
             # Speak the response
             self.speak(response)

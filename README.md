@@ -85,7 +85,10 @@ The bot will listen to your voice, convert it to text, process your command, and
 
 ```
 voice_bot/
+├── .gitignore          # Git ignore file for Python artifacts
 ├── README.md           # This file
+├── bot_utils.py        # Shared utility functions for command processing
+├── demo.py             # Demo script for testing without microphone
 ├── requirements.txt    # Python dependencies
 └── voice_bot.py       # Main voice bot implementation
 ```
