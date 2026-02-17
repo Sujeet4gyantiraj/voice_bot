@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voice Chat — LLM</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --primary: #6c63ff;
+      --primary-glow: rgba(108, 99, 255, .35);
+      --danger: #ff4d6a;
+      --text: #e4e4e7;
+      --muted: #9ca3af;
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: .25rem;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: .85rem;
+      margin-bottom: 2rem;
+    }
+
+    /* ── Chat log ─────────────────────────────────────── */
+    #chat {
+      width: 100%;
+      max-width: 640px;
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: .75rem;
+      margin-bottom: 1.5rem;
+      padding-right: .25rem;
+    }
+
+    .msg {
+      padding: .85rem 1.1rem;
+      border-radius: var(--radius);
+      max-width: 85%;
+      line-height: 1.55;
+      font-size: .92rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .msg.user {
+      align-self: flex-end;
+      background: var(--primary);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+
+    .msg.assistant {
+      align-self: flex-start;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+
+    .msg.system {
+      align-self: center;
+      color: var(--muted);
+      font-size: .8rem;
+      background: transparent;
+    }
+
+    /* ── Controls ─────────────────────────────────────── */
+    .controls {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    #startBtn {
+      border: none;
+      border-radius: 999px;
+      padding: 0.85rem 1.5rem;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 10px 25px rgba(108, 99, 255, .25);
+    }
+
+    #textForm {
+      width: 100%;
+      max-width: 640px;
+      margin-top: 1.5rem;
+      display: flex;
+      gap: .75rem;
+    }
+
+    #textForm textarea {
+      flex: 1;
+      min-height: 70px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: .8rem;
+      color: var(--text);
+      font-size: .95rem;
+      resize: vertical;
+    }
+
+    #textForm button {
+      border: none;
+      border-radius: 12px;
+      padding: 0 1.2rem;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #micBtn {
+      width: 72px;
+      height: 72px;
+      border: none;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #fff;
+      font-size: 1.8rem;
+      cursor: pointer;
+      transition: box-shadow .2s, transform .15s, background .2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #micBtn:hover { transform: scale(1.06); }
+
+    #micBtn.recording {
+      background: var(--danger);
+      box-shadow: 0 0 0 6px rgba(255, 77, 106, .3);
+      animation: pulse 1.2s infinite;
+    }
+
+    #micBtn:disabled {
+      opacity: .35;
+      cursor: not-allowed;
+      box-shadow: none;
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 6px rgba(255, 77, 106, .25); }
+      50%      { box-shadow: 0 0 0 14px rgba(255, 77, 106, .08); }
+    }
+
+    #status {
+      color: var(--muted);
+      font-size: .82rem;
+      margin-top: .5rem;
+      min-height: 1.2em;
+      text-align: center;
+    }
+
+    /* ── Visualiser ───────────────────────────────────── */
+    #visualiser {
+      width: 200px;
+      height: 48px;
+    }
+
+    /* ── Audio player (hidden) ────────────────────────── */
+    #audioPlayer { display: none; }
+  </style>
+</head>
+<body>
+
+<h1>&#127908; Voice Chat</h1>
+<p class="subtitle">Press Start Bot and it will listen continuously for your answers</p>
+
+<div id="chat"></div>
+
+<canvas id="visualiser"></canvas>
+
+<div class="controls">
+  <button id="startBtn">Start Bot</button>
+  <button id="micBtn" title="Auto listening enabled after Start">&#127908;</button>
+</div>
+<p id="status">Ready</p>
+
+<audio id="audioPlayer"></audio>
+
+<form id="textForm">
+  <textarea id="textInput" placeholder="Type your question..." required></textarea>
+  <button type="submit">Send</button>
+</form>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const WS_URL = `ws://${location.host}/ws/voice`;
+let ws = null;
+let mediaStream = null;
+let recorder = null;
+let recording = false;
+let audioChunks = [];       // WAV chunks received from server
+let recordedChunks = [];    // WebM chunks captured from mic
+let analyser, dataArray, animFrame;
+let audioCtx = null;
+let sourceNode = null;
+let autoMode = false;
+let pausedByBot = false;
+let discardClip = false;
+let detectedSpeech = false;
+let lastSpeechTs = 0;
+
+const SPEECH_THRESHOLD = 42;     // amplitude (0-255) to detect speech
+const SILENCE_HOLD_MS = 1200;    // ms of silence before clipping ends
+const AUTO_RESTART_DELAY = 400;  // delay before auto resume
+const IDLE_RESET_MS = 8000;      // reset a silent clip after this many ms
+
+const chatEl     = document.getElementById("chat");
+const micBtn     = document.getElementById("micBtn");
+const startBtn   = document.getElementById("startBtn");
+const statusEl   = document.getElementById("status");
+const playerEl   = document.getElementById("audioPlayer");
+const canvas     = document.getElementById("visualiser");
+const canvasCtx  = canvas.getContext("2d");
+const textForm   = document.getElementById("textForm");
+const textInput  = document.getElementById("textInput");
+
+const updateMicButton = () => {
+  if (autoMode) {
+    micBtn.disabled = true;
+    micBtn.classList.add("disabled");
+    micBtn.innerHTML = "🎛️";
+    micBtn.title = "Auto listening enabled";
+    return;
+  } else {
+    micBtn.disabled = false;
+    micBtn.classList.remove("disabled");
+  }
+  if (recording) {
+    micBtn.classList.add("recording");
+    micBtn.innerHTML = "⏹";
+    micBtn.title = "Stop & send";
+  } else {
+    micBtn.classList.remove("recording");
+    micBtn.innerHTML = "🎙️";
+    micBtn.title = "Start listening";
+  }
+};
+
+const buildControlPayload = () => ({ action: "end" });
+const MEDIA_CONSTRAINTS = {
+  audio: {
+    sampleRate: 16000,
+    channelCount: 1,
+    echoCancellation: true,
+    noiseSuppression: true,
+  },
+};
+
+async function ensureMediaStream() {
+  const hasLiveTrack = mediaStream?.getTracks().some((t) => t.readyState === "live");
+  if (mediaStream && mediaStream.active && hasLiveTrack) {
+    return mediaStream;
+  }
+  mediaStream = await navigator.mediaDevices.getUserMedia(MEDIA_CONSTRAINTS);
+  sourceNode = null;
+  analyser = null;
+  dataArray = null;
+  return mediaStream;
+}
+
+function ensureAnalyser() {
+  if (!mediaStream) return;
+  if (!audioCtx) {
+    audioCtx = new AudioContext();
+  }
+  if (!sourceNode) {
+    sourceNode = audioCtx.createMediaStreamSource(mediaStream);
+  }
+  if (!analyser) {
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    sourceNode.connect(analyser);
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+  }
+}
+
+function teardownMedia() {
+  mediaStream?.getTracks().forEach((t) => t.stop());
+  mediaStream = null;
+  if (audioCtx) {
+    audioCtx.close();
+    audioCtx = null;
+  }
+  analyser = null;
+  dataArray = null;
+  sourceNode = null;
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+  ws.binaryType = "arraybuffer";
+
+  ws.onopen  = () => setStatus("Connected");
+  ws.onclose = () => {
+    setStatus("Disconnected — reconnecting…");
+    autoMode = false;
+    pausedByBot = false;
+    if (recording) {
+      stopRecording(true);
+    } else {
+      teardownMedia();
+    }
+    setStatus("Disconnected — reconnecting…");
+    startBtn.disabled = false;
+    startBtn.textContent = "Start Bot";
+    updateMicButton();
+    setTimeout(connectWS, 2000);
+  };
+  ws.onerror = () => ws.close();
+
+  ws.onmessage = (evt) => {
+    if (evt.data instanceof ArrayBuffer) {
+      // Binary audio chunk from TTS
+      audioChunks.push(evt.data);
+      return;
+    }
+
+    const msg = JSON.parse(evt.data);
+
+    if (msg.type === "status") {
+      setStatus(msg.text);
+    } else if (msg.type === "audio_start") {
+      audioChunks = [];
+      pausedByBot = true;
+      if (recording) {
+        stopRecording(true);
+      }
+    } else if (msg.type === "audio_end") {
+      playAudioChunks();
+    } else if (msg.type === "transcript") {
+      if (msg.text) addMessage("user", msg.text);
+    } else if (msg.type === "llm_text") {
+      addMessage("assistant", msg.text);
+    } else if (msg.type === "done") {
+      setStatus("Ready");
+    } else if (msg.type === "error") {
+      addMessage("system", `⚠ ${msg.text}`);
+      setStatus("Ready");
+    }
+  };
+}
+
+// ── Audio playback ─────────────────────────────────────────────────────────
+function playAudioChunks() {
+  if (!audioChunks.length) return;
+  const blob = new Blob(audioChunks, { type: "audio/wav" });
+  audioChunks = [];
+  const url = URL.createObjectURL(blob);
+  playerEl.src = url;
+  playerEl.play().catch(() => {});
+  playerEl.onended = () => {
+    URL.revokeObjectURL(url);
+    pausedByBot = false;
+    if (autoMode && !recording) {
+      setTimeout(() => {
+        if (autoMode && !recording && !pausedByBot) {
+          startRecording();
+        }
+      }, AUTO_RESTART_DELAY);
+    }
+  };
+}
+
+// ── Recording ──────────────────────────────────────────────────────────────
+async function startRecording() {
+  if (recording || pausedByBot) return;
+
+  try {
+    await ensureMediaStream();
+    ensureAnalyser();
+  } catch (err) {
+    addMessage("system", "Microphone access denied.");
+    autoMode = false;
+    startBtn.disabled = false;
+    startBtn.textContent = "Start Bot";
+    updateMicButton();
+    return;
+  }
+
+  recording = true;
+  detectedSpeech = false;
+  discardClip = false;
+  recordedChunks = [];
+  lastSpeechTs = performance.now();
+  updateMicButton();
+  setStatus(autoMode ? "Listening for your answer…" : "Listening… click again to send");
+
+  if (!dataArray) {
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+  }
+  drawVisualiser();
+
+  const currentRecorder = new MediaRecorder(mediaStream, { mimeType: "audio/webm;codecs=opus" });
+  recorder = currentRecorder;
+  currentRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) {
+      recordedChunks.push(e.data);
+    }
+  };
+  currentRecorder.addEventListener("stop", async () => {
+    try {
+      let sentAudio = false;
+      if (!discardClip && recordedChunks.length && ws?.readyState === WebSocket.OPEN) {
+        const blob = new Blob(recordedChunks, { type: currentRecorder.mimeType || "audio/webm;codecs=opus" });
+        const buffer = await blob.arrayBuffer();
+        ws.send(buffer);
+        sentAudio = true;
+      } else if (!discardClip && !autoMode) {
+        addMessage("system", "No audio captured. Please try again.");
+      }
+
+      if (sentAudio && ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(buildControlPayload()));
+      }
+    } catch (err) {
+      if (!discardClip) {
+        addMessage("system", `Failed to process audio: ${err.message}`);
+      }
+    } finally {
+      recordedChunks = [];
+      recorder = null;
+      if (!autoMode) {
+        teardownMedia();
+      }
+      const shouldRestart = autoMode && !pausedByBot;
+      discardClip = false;
+      if (shouldRestart) {
+        setTimeout(() => {
+          if (autoMode && !recording && !pausedByBot) {
+            startRecording();
+          }
+        }, AUTO_RESTART_DELAY);
+      }
+    }
+  });
+  currentRecorder.start();
+}
+
+function stopRecording(discard = false) {
+  if (!recording || !recorder) return;
+  recording = false;
+  discardClip = discard;
+  detectedSpeech = false;
+  updateMicButton();
+  cancelAnimationFrame(animFrame);
+  clearCanvas();
+
+  if (recorder.state !== "inactive") {
+    recorder.stop();
+  }
+
+  if (!discard) {
+    setStatus(autoMode ? "Processing your answer…" : "Transcribing…");
+  } else {
+    const msg = pausedByBot ? "Assistant speaking…" : "Listening for your answer…";
+    setStatus(msg);
+  }
+}
+
+// ── Visualiser drawing ─────────────────────────────────────────────────────
+function drawVisualiser() {
+  if (!analyser) return;
+  animFrame = requestAnimationFrame(drawVisualiser);
+  analyser.getByteFrequencyData(dataArray);
+
+  const W = canvas.width, H = canvas.height;
+  canvasCtx.clearRect(0, 0, W, H);
+
+  const barW = (W / dataArray.length) * 2.5;
+  let x = 0;
+  for (let i = 0; i < dataArray.length; i++) {
+    const barH = (dataArray[i] / 255) * H;
+    canvasCtx.fillStyle = `rgba(108, 99, 255, ${0.4 + dataArray[i] / 255 * 0.6})`;
+    canvasCtx.fillRect(x, H - barH, barW - 1, barH);
+    x += barW;
+  }
+
+  if (recording && autoMode) {
+    const avg = dataArray.reduce((sum, val) => sum + val, 0) / dataArray.length;
+    const now = performance.now();
+    if (avg > SPEECH_THRESHOLD) {
+      detectedSpeech = true;
+      lastSpeechTs = now;
+    } else if (detectedSpeech && now - lastSpeechTs > SILENCE_HOLD_MS) {
+      stopRecording();
+    } else if (!detectedSpeech && now - lastSpeechTs > IDLE_RESET_MS) {
+      stopRecording(true);
+    }
+  }
+}
+
+function clearCanvas() {
+  canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+// ── Chat helpers ───────────────────────────────────────────────────────────
+function addMessage(role, text) {
+  const div = document.createElement("div");
+  div.className = `msg ${role}`;
+  div.textContent = text;
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function setStatus(text) { statusEl.textContent = text; }
+
+// ── Text chat submission ──────────────────────────────────────────────────
+textForm.addEventListener("submit", (evt) => {
+  evt.preventDefault();
+  const query = textInput.value.trim();
+  if (!query || ws?.readyState !== WebSocket.OPEN) return;
+
+  addMessage("user", query);
+  ws.send(JSON.stringify({ action: "text_answer", text: query }));
+  textInput.value = "";
+});
+
+startBtn.addEventListener("click", async () => {
+  if (ws?.readyState !== WebSocket.OPEN) {
+    setStatus("Connecting… please wait");
+    return;
+  }
+
+  setStatus("Starting conversation...");
+  ws.send(JSON.stringify({ action: "start" }));
+  autoMode = true;
+  updateMicButton();
+  startBtn.disabled = true;
+  startBtn.textContent = "Bot Running";
+
+  if (!pausedByBot && !recording) {
+    await startRecording();
+  }
+});
+
+// ── Button events (press & hold) ──────────────────────────────────────────
+function toggleRecording(e) {
+  e?.preventDefault();
+  if (autoMode) return;
+  if (recording) {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+}
+
+micBtn.addEventListener("click", toggleRecording);
+micBtn.addEventListener("touchend", toggleRecording);
+
+updateMicButton();
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+connectWS();
+</script>
+</body>
+</html>
